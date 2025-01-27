@@ -1,18 +1,63 @@
 import fs from "fs";
 import fetch from "node-fetch";
+import { text } from "stream/consumers";
+import { TelegramClient  } from "telegram";
+import { StringSession } from "telegram/sessions/index.js";
+
+const apiId = 123456;
+const apiHash = "123456abcdfg";
+const ownerId = 1842794304;
 
 fs.readFile("config.json", "utf8", async (err, data) => {
+
     if (err) {
         console.error("Error reading file 'config.json':", err.message);
         return;
     }
+
     try {
         const json = JSON.parse(data);
         const token = json.token;
+        let clients = [];
 
+        // login to sessions
+        fs.readFile('sessions.txt', 'utf8', async (err, data) => {
+            if (err) {
+                console.error("Error reading file 'sessions.txt':", err.message);
+                return;
+            }
+        
+            try {
+                const array = data.split("\n").map(item => item.trim());
+                console.log(array);
+                
+                for (let session of array) {
+                    const stringSession = new StringSession(session);
+                    const client =  new TelegramClient(stringSession, apiId, apiHash, {
+                        connectionRetries: 5,
+                    });
+                    try {
+                        await client.connect();
+                        await client.getMe();
+                        clients.push(client);
+                    } catch (err) {
+                        console.error(err.message);
+                        await bot(token, 'sendMessage',{
+                            chat_id: ownerId,
+                            text: err.message
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error(err.message);
+                return;
+            }
+        });
+        
         let lastUpdateId = 0;
         console.log("Bot is running...");
 
+        // events loop
         while (true) {
             try {
                 const updates = await bot(token, "getUpdates", {
@@ -76,6 +121,16 @@ fs.readFile("config.json", "utf8", async (err, data) => {
                                                         text: 'STATUS',
                                                         callback_data: 'status'
                                                     }
+                                                ],
+                                                [
+                                                    {
+                                                        text: 'RUN',
+                                                        callback_data: 'run'
+                                                    },
+                                                    {
+                                                        text: 'STOP',
+                                                        callback_data: 'stop'
+                                                    }
                                                 ]
                                             ]
                                         })
@@ -91,8 +146,9 @@ fs.readFile("config.json", "utf8", async (err, data) => {
                 console.error("Error fetching updates:", error.message);
             }
         }
+
     } catch (err) {
-        console.error("Error parsing JSON:", err.message);
+        console.error(err.message);
         return;
     }
 });
